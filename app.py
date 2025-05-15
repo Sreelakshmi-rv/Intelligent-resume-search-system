@@ -5,21 +5,33 @@ from sentence_transformers import SentenceTransformer
 
 # Sample Data
 data = {
-    "id": [1, 2, 3, 4, 5],
-    "name": ["Alice Johnson", "Bob Lee", "Carol Wong", "David Kim", "Eve Smith"],
+    "id": list(range(1, 16)),
+    "name": [
+        "Alice Johnson", "Bob Lee", "Carol Wong", "David Kim", "Eve Smith",
+        "Frank Miller", "Grace Liu", "Henry Adams", "Isla Patel", "Jack Nguyen",
+        "Kavya Raj", "Leo Thomas", "Meera Varma", "Noah Singh", "Olivia Costa"
+    ],
     "email": [
-        "alice.johnson@example.com",
-        "bob.lee@example.com",
-        "carol.wong@example.com",
-        "david.kim@example.com",
-        "eve.smith@example.com"
+        "alice.johnson@example.com", "bob.lee@example.com", "carol.wong@example.com", "david.kim@example.com", "eve.smith@example.com",
+        "frank.miller@example.com", "grace.liu@example.com", "henry.adams@example.com", "isla.patel@example.com", "jack.nguyen@example.com",
+        "kavya.raj@example.com", "leo.thomas@example.com", "meera.varma@example.com", "noah.singh@example.com", "olivia.costa@example.com"
     ],
     "resume_text": [
         "Python backend developer with 4 years of experience in Django and Flask frameworks. Skilled in REST APIs and microservices.",
         "Frontend engineer specializing in React, Redux, and responsive web design. 3 years experience building SaaS applications.",
         "Full stack developer experienced with Python, JavaScript, AWS cloud, and containerization (Docker, Kubernetes).",
         "Software engineer with expertise in data science, machine learning using Python and R. Published research papers on NLP.",
-        "Backend developer focused on Node.js, Express, MongoDB, and GraphQL. 5 years of experience in scalable API development."
+        "Backend developer focused on Node.js, Express, MongoDB, and GraphQL. 5 years of experience in scalable API development.",
+        "Cloud architect with deep understanding of Azure and AWS. Expert in designing CI/CD pipelines and cloud security policies.",
+        "Mobile app developer with Flutter and Kotlin experience. Built e-commerce and social apps with over 100k downloads.",
+        "DevOps engineer with strong knowledge in Terraform, Jenkins, GitHub Actions, Docker, and Kubernetes clusters.",
+        "AI engineer with hands-on experience in LLMs, OpenAI API, transformers, and building chatbots and recommendation systems.",
+        "Business analyst with SQL, Tableau, and Python proficiency. Worked on multiple cross-functional data analytics projects.",
+        "Cybersecurity analyst skilled in penetration testing, Wireshark, Nmap, and implementing secure network architectures.",
+        "UI/UX designer with a keen eye for aesthetics and usability. Proficient in Figma, Adobe XD, and design thinking process.",
+        "ML engineer with experience in time-series forecasting, CNNs, and large-scale model training on cloud platforms.",
+        "Blockchain developer with Solidity, smart contracts, and experience in building DeFi and NFT marketplaces on Ethereum.",
+        "Data engineer with Spark, Hadoop, and Airflow experience. Specialized in building data pipelines and ETL workflows."
     ]
 }
 resumes_df = pd.DataFrame(data)
