@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# Load or define resumes data
+# Sample Data
 data = {
     "id": [1, 2, 3, 4, 5],
     "name": ["Alice Johnson", "Bob Lee", "Carol Wong", "David Kim", "Eve Smith"],
@@ -39,36 +39,70 @@ def cosine_similarity(vec1, vec2):
     vec2_norm = vec2 / np.linalg.norm(vec2)
     return np.dot(vec1_norm, vec2_norm)
 
-def search_resumes(query, resumes_df, resume_embeddings, top_k=3):
+def search_resumes(query, resumes_df, resume_embeddings):
     query_embedding = load_model().encode([query], convert_to_tensor=False)[0]
     scores = [cosine_similarity(query_embedding, emb) for emb in resume_embeddings]
-    top_indices = np.argsort(scores)[::-1][:top_k]
-    results = []
-    for idx in top_indices:
-        candidate = resumes_df.iloc[idx]
-        results.append({
-            "id": candidate['id'],
-            "name": candidate['name'],
-            "email": candidate['email'],
-            "similarity_score": scores[idx],
-            "resume_text": candidate['resume_text']
-        })
-    return results
+    resumes_df['similarity'] = scores
+    sorted_df = resumes_df.sort_values(by='similarity', ascending=False)
+    return sorted_df
 
 def main():
-    st.title("Intelligent Resume Search System")
-    st.write("Enter a job description or query to find matching candidate resumes.")
-    model = load_model()
+    st.set_page_config(page_title="Resume Matcher", layout="wide")
+    st.title("\U0001F4C4 Intelligent Resume Search System")
+
+    st.markdown("""
+        <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .highlight-score {
+            color: #FF5733;
+            font-weight: bold;
+        }
+        .candidate-name {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    with st.expander("\u2139 About this App"):
+        st.write("This tool lets you search and rank candidate resumes by relevance to a job description using AI-powered semantic search.")
+
+    query = st.text_input("Job Query", placeholder="Enter job description or keywords...")
+    submit = st.button("\U0001F50D Search", use_container_width=True)
+
     resume_embeddings = embed_resumes(resumes_df['resume_text'].tolist())
-    query = st.text_input("Job Query", value="Python backend developer with 3 years of experience")
-    if query:
-        results = search_resumes(query, resumes_df, resume_embeddings, top_k=3)
-        st.subheader("Top Matching Candidates:")
-        for i, candidate in enumerate(results, start=1):
-            st.markdown(f"### [{i}] {candidate['name']}")
-            st.write(f"**Email:** {candidate['email']}")
-            st.write(f"**Similarity Score:** {candidate['similarity_score']:.4f}")
-            st.write(f"**Resume Snippet:** {candidate['resume_text'][:200]}…")
+
+    if submit and query:
+        results = search_resumes(query, resumes_df.copy(), resume_embeddings)
+
+        st.sidebar.header("\u2699 Filter & Actions")
+        min_score = st.sidebar.slider("Minimum Similarity Score", 0.0, 1.0, 0.5, 0.01)
+        filtered = results[results['similarity'] >= min_score]
+        st.sidebar.write(f"Filtered candidates: {len(filtered)}")
+
+        st.sidebar.markdown("### Save or Send")
+        for idx, row in filtered.iterrows():
+            if st.sidebar.button(f"Save {row['name']}"):
+                st.sidebar.success(f"{row['name']}'s profile saved!")
+            if st.sidebar.button(f"Send {row['name']} via Email"):
+                st.sidebar.info(f"{row['name']}'s profile sent to your email (simulated).")
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("Need help? Hover over elements or contact us below.")
+        if st.sidebar.button("Send Feedback"):
+            st.sidebar.warning("Feedback feature is under construction.")
+
+        st.subheader("Top Matching Candidates")
+        for i, row in filtered.iterrows():
+            with st.container():
+                st.markdown(f"<div class='candidate-name'>{row['name']}</div>", unsafe_allow_html=True)
+                st.markdown(f"**Email:** {row['email']}")
+                st.markdown(f"**Similarity Score:** <span class='highlight-score'>{row['similarity']:.4f}</span>", unsafe_allow_html=True)
+                with st.expander("Show Resume Snippet"):
+                    st.write(row['resume_text'])
+                st.markdown("---")
 
 if __name__ == "__main__":
     main()
