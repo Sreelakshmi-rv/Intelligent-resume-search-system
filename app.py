@@ -1,84 +1,120 @@
 import streamlit as st
 import pandas as pd
-import re
-import string
-from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
-# Load model
-model = SentenceTransformer('all-MiniLM-L6-v2')  # Can replace with 'intfloat/e5-small-v2' for better results
+# Sample Data
+data = {
+    "id": list(range(1, 16)),
+    "name": [
+        "Alice Johnson", "Bob Lee", "Carol Wong", "David Kim", "Eve Smith",
+        "Frank Miller", "Grace Liu", "Henry Adams", "Isla Patel", "Jack Nguyen",
+        "Kavya Raj", "Leo Thomas", "Meera Varma", "Noah Singh", "Olivia Costa"
+    ],
+    "email": [
+        "alice.johnson@example.com", "bob.lee@example.com", "carol.wong@example.com", "david.kim@example.com", "eve.smith@example.com",
+        "frank.miller@example.com", "grace.liu@example.com", "henry.adams@example.com", "isla.patel@example.com", "jack.nguyen@example.com",
+        "kavya.raj@example.com", "leo.thomas@example.com", "meera.varma@example.com", "noah.singh@example.com", "olivia.costa@example.com"
+    ],
+    "resume_text": [
+        "Python backend developer with 4 years of experience in Django and Flask frameworks. Skilled in REST APIs and microservices.",
+        "Frontend engineer specializing in React, Redux, and responsive web design. 3 years experience building SaaS applications.",
+        "Full stack developer experienced with Python, JavaScript, AWS cloud, and containerization (Docker, Kubernetes).",
+        "Software engineer with expertise in data science, machine learning using Python and R. Published research papers on NLP.",
+        "Backend developer focused on Node.js, Express, MongoDB, and GraphQL. 5 years of experience in scalable API development.",
+        "Cloud architect with deep understanding of Azure and AWS. Expert in designing CI/CD pipelines and cloud security policies.",
+        "Mobile app developer with Flutter and Kotlin experience. Built e-commerce and social apps with over 100k downloads.",
+        "DevOps engineer with strong knowledge in Terraform, Jenkins, GitHub Actions, Docker, and Kubernetes clusters.",
+        "AI engineer with hands-on experience in LLMs, OpenAI API, transformers, and building chatbots and recommendation systems.",
+        "Business analyst with SQL, Tableau, and Python proficiency. Worked on multiple cross-functional data analytics projects.",
+        "Cybersecurity analyst skilled in penetration testing, Wireshark, Nmap, and implementing secure network architectures.",
+        "UI/UX designer with a keen eye for aesthetics and usability. Proficient in Figma, Adobe XD, and design thinking process.",
+        "ML engineer with experience in time-series forecasting, CNNs, and large-scale model training on cloud platforms.",
+        "Blockchain developer with Solidity, smart contracts, and experience in building DeFi and NFT marketplaces on Ethereum.",
+        "Data engineer with Spark, Hadoop, and Airflow experience. Specialized in building data pipelines and ETL workflows."
+    ]
+}
+resumes_df = pd.DataFrame(data)
 
-# Load and preprocess dataset
-@st.cache_data
-def load_and_clean_data(filepath):
-    df = pd.read_csv(filepath)
-    df.dropna(subset=['Resume'], inplace=True)
-    df['Resume_clean'] = df['Resume'].apply(clean_text)
-    return df
+@st.cache_resource
+def load_model():
+    return SentenceTransformer('all-MiniLM-L6-v2')
 
-# Text preprocessing
-def clean_text(text):
-    text = re.sub(r"http\S+|www\S+|https\S+", '', text, flags=re.MULTILINE)
-    text = re.sub(r'\@w+|\#','', text)
-    text = text.lower()
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\W+', ' ', text)
-    return text.strip()
+@st.cache_resource
+def embed_resumes(texts):
+    model = load_model()
+    embeddings = model.encode(texts, convert_to_tensor=False)
+    return np.array(embeddings)
 
-# Filter resumes containing keywords from the query
-def keyword_filter(df, query):
-    query_keywords = query.lower().split()
-    pattern = '|'.join(re.escape(word) for word in query_keywords)
-    return df[df['Resume_clean'].str.contains(pattern, case=False, na=False)]
+def cosine_similarity(vec1, vec2):
+    vec1_norm = vec1 / np.linalg.norm(vec1)
+    vec2_norm = vec2 / np.linalg.norm(vec2)
+    return np.dot(vec1_norm, vec2_norm)
 
-# Streamlit UI
-st.set_page_config(page_title="Job-Resume Matcher", layout="wide")
-st.title("🔍 Job Posting to Resume Matcher")
+def search_resumes(query, resumes_df, resume_embeddings):
+    query_embedding = load_model().encode([query], convert_to_tensor=False)[0]
+    scores = [cosine_similarity(query_embedding, emb) for emb in resume_embeddings]
+    resumes_df['similarity'] = scores
+    sorted_df = resumes_df.sort_values(by='similarity', ascending=False)
+    return sorted_df
 
-# Upload dataset
-st.sidebar.header("Upload Resume Dataset")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
+def main():
+    st.set_page_config(page_title="Resume Matcher", layout="wide")
+    st.title("\U0001F4C4 Intelligent Resume Search System")
 
-if uploaded_file:
-    resume_df = load_and_clean_data(uploaded_file)
+    st.markdown("""
+        <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .highlight-score {
+            color: #FF5733;
+            font-weight: bold;
+        }
+        .candidate-name {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
-    st.success("✅ Resume dataset loaded!")
+    with st.expander("\u2139 About this App"):
+        st.write("This tool lets you search and rank candidate resumes by relevance to a job description using AI-powered semantic search.")
 
-    job_query = st.text_input("Enter Job Description or Title", placeholder="e.g., Data Scientist with NLP experience")
+    query = st.text_input("Job Query", placeholder="Enter job description or keywords...")
+    submit = st.button("\U0001F50D Search", use_container_width=True)
 
-    if st.button("Find Matching Candidates") and job_query:
-        with st.spinner("Embedding and matching resumes..."):
+    resume_embeddings = embed_resumes(resumes_df['resume_text'].tolist())
 
-            # Filter resumes by keywords
-            filtered_df = keyword_filter(resume_df, job_query)
+    if submit and query:
+        results = search_resumes(query, resumes_df.copy(), resume_embeddings)
 
-            if filtered_df.empty:
-                st.warning("⚠️ No resumes matched your job keywords. Try simplifying your query.")
-            else:
-                query_embedding = model.encode([job_query], show_progress_bar=False)
+        st.sidebar.header("\u2699 Filter & Actions")
+        min_score = st.sidebar.slider("Minimum Similarity Score", 0.0, 1.0, 0.5, 0.01)
+        filtered = results[results['similarity'] >= min_score]
+        st.sidebar.write(f"Filtered candidates: {len(filtered)}")
 
-                # Compute similarity
-                filtered_df['similarity'] = filtered_df['Resume_clean'].apply(
-                    lambda x: cosine_similarity(
-                        [model.encode([x], show_progress_bar=False)[0]],
-                        query_embedding
-                    )[0][0]
-                )
+        st.sidebar.markdown("### Save or Send")
+        for idx, row in filtered.iterrows():
+            if st.sidebar.button(f"Save {row['name']}"):
+                st.sidebar.success(f"{row['name']}'s profile saved!")
+            if st.sidebar.button(f"Send {row['name']} via Email"):
+                st.sidebar.info(f"{row['name']}'s profile sent to your email (simulated).")
 
-                # Keep only strong matches
-                filtered_df = filtered_df[filtered_df['similarity'] >= 0.5]
-                filtered_df = filtered_df.sort_values(by='similarity', ascending=False)
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("Need help? Hover over elements or contact us below.")
+        if st.sidebar.button("Send Feedback"):
+            st.sidebar.warning("Feedback feature is under construction.")
 
-                if filtered_df.empty:
-                    st.warning("⚠️ No strong matches found (similarity ≥ 0.5). Try different keywords.")
-                else:
-                    st.subheader("🎯 Top Matching Candidates")
+        st.subheader("Top Matching Candidates")
+        for i, row in filtered.iterrows():
+            with st.container():
+                st.markdown(f"<div class='candidate-name'>{row['name']}</div>", unsafe_allow_html=True)
+                st.markdown(f"*Email:* {row['email']}")
+                st.markdown(f"*Similarity Score:* <span class='highlight-score'>{row['similarity']:.4f}</span>", unsafe_allow_html=True)
+                with st.expander("Show Resume Snippet"):
+                    st.write(row['resume_text'])
+                st.markdown("---")
 
-                    for _, row in filtered_df.head(10).iterrows():
-                        st.markdown(f"**Category:** {row['Category']}")
-                        st.markdown(f"**Similarity Score:** `{row['similarity']:.4f}`")
-                        st.markdown("📝 **Resume Preview:**")
-                        st.code(row['Resume'][:2000])  # Limit preview length
-                        st.markdown("---")
-else:
-    st.info("📂 Upload a CSV file containing resumes to get started.")
+if _name_ == "_main_":
+    main()
