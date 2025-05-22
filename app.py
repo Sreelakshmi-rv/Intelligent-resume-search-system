@@ -1,99 +1,84 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import re
+import string
+from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 
-# --- Load Dataset ---
+# Load model
+model = SentenceTransformer('all-MiniLM-L6-v2')  # Can replace with 'intfloat/e5-small-v2' for better results
+
+# Load and preprocess dataset
 @st.cache_data
-def load_data():
-    df = pd.read_csv("UpdatedResumeDataSet.csv")
-    df = df[["Resume", "Category"]]  # Adjust columns as needed
-    df.dropna(inplace=True)
-    df["Resume_clean"] = df["Resume"].apply(preprocess_text)
+def load_and_clean_data(filepath):
+    df = pd.read_csv(filepath)
+    df.dropna(subset=['Resume'], inplace=True)
+    df['Resume_clean'] = df['Resume'].apply(clean_text)
     return df
 
-# --- Text Cleaning ---
-def preprocess_text(text):
-    text = text.lower()
+# Text preprocessing
+def clean_text(text):
     text = re.sub(r"http\S+|www\S+|https\S+", '', text, flags=re.MULTILINE)
     text = re.sub(r'\@w+|\#','', text)
-    text = re.sub(r'[^A-Za-z0-9\s]+', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    text = text.lower()
+    text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\W+', ' ', text)
+    return text.strip()
 
-# --- Load Sentence Transformer ---
-@st.cache_resource
-def load_model():
-    return SentenceTransformer('all-MiniLM-L6-v2')
+# Filter resumes containing keywords from the query
+def keyword_filter(df, query):
+    query_keywords = query.lower().split()
+    pattern = '|'.join(re.escape(word) for word in query_keywords)
+    return df[df['Resume_clean'].str.contains(pattern, case=False, na=False)]
 
-# --- Embed Resumes ---
-@st.cache_resource
-def embed_resumes(texts):
-    model = load_model()
-    return model.encode(texts, convert_to_tensor=False)
+# Streamlit UI
+st.set_page_config(page_title="Job-Resume Matcher", layout="wide")
+st.title("🔍 Job Posting to Resume Matcher")
 
-# --- Cosine Similarity ---
-def cosine_similarity(vec1, vec2):
-    vec1_norm = vec1 / np.linalg.norm(vec1)
-    vec2_norm = vec2 / np.linalg.norm(vec2)
-    return np.dot(vec1_norm, vec2_norm)
+# Upload dataset
+st.sidebar.header("Upload Resume Dataset")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
 
-# --- Search Function ---
-def search_resumes(query, df, embeddings, debug=False):
-    model = load_model()
-    query = preprocess_text(query)
-    query_embedding = model.encode([query], convert_to_tensor=False)[0]
+if uploaded_file:
+    resume_df = load_and_clean_data(uploaded_file)
 
-    scores = [cosine_similarity(query_embedding, emb) for emb in embeddings]
-    df['similarity'] = scores
+    st.success("✅ Resume dataset loaded!")
 
-    if debug:
-        for i, row in df.iterrows():
-            print(f"{row['Category']}: {row['similarity']:.4f}")
+    job_query = st.text_input("Enter Job Description or Title", placeholder="e.g., Data Scientist with NLP experience")
 
-    return df.sort_values(by='similarity', ascending=False)
+    if st.button("Find Matching Candidates") and job_query:
+        with st.spinner("Embedding and matching resumes..."):
 
-# --- Main App ---
-def main():
-    st.set_page_config(page_title="Resume Matcher", layout="wide")
-    st.title("📄 Intelligent Resume Search System")
+            # Filter resumes by keywords
+            filtered_df = keyword_filter(resume_df, job_query)
 
-    st.markdown("""
-        <style>
-        .highlight-score { color: #FF5733; font-weight: bold; }
-        .candidate-name { font-size: 20px; font-weight: 600; }
-        </style>
-    """, unsafe_allow_html=True)
+            if filtered_df.empty:
+                st.warning("⚠️ No resumes matched your job keywords. Try simplifying your query.")
+            else:
+                query_embedding = model.encode([job_query], show_progress_bar=False)
 
-    with st.expander("ℹ️ About"):
-        st.write("Search resumes using semantic understanding of your job query powered by AI.")
+                # Compute similarity
+                filtered_df['similarity'] = filtered_df['Resume_clean'].apply(
+                    lambda x: cosine_similarity(
+                        [model.encode([x], show_progress_bar=False)[0]],
+                        query_embedding
+                    )[0][0]
+                )
 
-    query = st.text_input("Job Query", placeholder="e.g. React developer with UI UX experience")
-    submit = st.button("🔍 Search", use_container_width=True)
+                # Keep only strong matches
+                filtered_df = filtered_df[filtered_df['similarity'] >= 0.5]
+                filtered_df = filtered_df.sort_values(by='similarity', ascending=False)
 
-    df = load_data()
-    resume_embeddings = embed_resumes(df["Resume_clean"].tolist())
+                if filtered_df.empty:
+                    st.warning("⚠️ No strong matches found (similarity ≥ 0.5). Try different keywords.")
+                else:
+                    st.subheader("🎯 Top Matching Candidates")
 
-    if submit and query:
-        results = search_resumes(query, df.copy(), resume_embeddings)
-
-        st.sidebar.header("⚙️ Filter Options")
-        min_score = st.sidebar.slider("Minimum Similarity Score", 0.0, 1.0, 0.25, 0.01)
-        filtered = results[results["similarity"] >= min_score]
-        st.sidebar.write(f"Filtered candidates: {len(filtered)}")
-
-        st.subheader("🎯 Top Matching Candidates")
-        if filtered.empty:
-            st.warning("No matching candidates found. Try lowering the similarity score or simplifying your query.")
-        else:
-            for _, row in filtered.iterrows():
-                with st.container():
-                    st.markdown(f"<div class='candidate-name'>{row['Category']}</div>", unsafe_allow_html=True)
-                    st.markdown(f"**Similarity Score:** <span class='highlight-score'>{row['similarity']:.4f}</span>", unsafe_allow_html=True)
-                    with st.expander("📝 Resume Preview"):
-                        st.write(row['Resume'])
-                    st.markdown("---")
-
-if __name__ == "__main__":
-    main()
+                    for _, row in filtered_df.head(10).iterrows():
+                        st.markdown(f"**Category:** {row['Category']}")
+                        st.markdown(f"**Similarity Score:** `{row['similarity']:.4f}`")
+                        st.markdown("📝 **Resume Preview:**")
+                        st.code(row['Resume'][:2000])  # Limit preview length
+                        st.markdown("---")
+else:
+    st.info("📂 Upload a CSV file containing resumes to get started.")
