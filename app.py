@@ -116,5 +116,5 @@ def main():
                     st.write(row['resume_text'])
                 st.markdown("---")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
